@@ -1,53 +1,60 @@
 <script>
 
-  window.emails = [];
+  // Globals aren't always bad
+  var users = [],
+      emails = [],
+      queue = []
 
-  function handleError(res) {
-    console.log("[debug]: " + res.responseText)
-  }
-
-  function displayEmails() {
-    document.querySelector("#output").innerHTML = emails.join(", ")
-  }
-
-  function processEvents(res) {
-    if(res.target.status == 200) {
-      var events = JSON.parse(res.target.response);
-      for (var i in events) {
-        var event = events[i];
-
-        if (event.type === "PushEvent" && event.payload.commits && event.payload.commits[0]) {
-          var author = event.payload.commits[0].author;
-          if (emails.indexOf(author.email) == -1) {
-            emails.push(author.email);
-            displayEmails();
-          }
-        }
-      }
-    }
-  }
-
-  function fetchEvents(user) {
-    var url = "https://api.github.com/users/" + user + "/events/public";
+  // Reinvent the jQuery wheel
+  function getJSON(url, cb) {
     var req = new XMLHttpRequest()
     req.open("GET", url)
     req.header = req.setRequestHeader
     req.setRequestHeader("Content-Type", "application/json")
-    req.addEventListener("error", handleError)
-    req.addEventListener("load", processEvents)
+    req.addEventListener("error", function(res){
+      console.error(":(", res)
+    })
+    req.addEventListener("load", function(res){
+      cb(JSON.parse(res.target.response))
+    })
     req.send()
   }
 
+  // Fetch user info from GitHub
+  function getUser(user) {
+    console.log("getUser(" + user + ")")
+    getJSON("https://api.github.com/users/"+user, function(user) {
+      if (user.email) emails.push(user.email)
+      document.querySelector("#output").innerHTML = emails.join(", ")
+      document.querySelector("#score").innerHTML = "Found " + emails.length + " of " + users.length
+    })
+  }
+
+  // Throttle requests to GitHub
+  setInterval(popQueue, 1000)
+  function popQueue() {
+    if (queue.length > 0) getUser(queue.pop())
+  }
+
+  // When the page is loaded
   document.addEventListener('DOMContentLoaded', function(){
+
+    // When username input changes
     document.querySelector("#input").addEventListener('change', function(event) {
 
-      emails = [];
-      displayEmails()
+      // Bail if input is empty
+      if (event.target.value==="") return
 
-      var users = event.target.value.split(",").map(function(e) {return e.replace(/ /g,'') });
-      for (var i in users) {
-        fetchEvents(users[i]);
-      }
+      // Reset results
+      emails = [];
+
+      // Update usernames array from comma-delimited input
+      users = event.target.value.split(",").map(function(e) {
+        return e.replace(/ /g,'')
+      });
+
+      // Copy usernames into the API request queue
+      queue = users
     });
   });
 
@@ -73,10 +80,17 @@
     padding: 10px 8px;
   }
 
+  #score {
+    position: absolute;
+    top: 22px;
+    right: 18px;
+    color: #999;
+    background: white;
+  }
+
 </style>
 
 <title>Github Email Finder</title>
 <input type="text" id="input" placeholder="Enter comma-delimited GitHub usernames">
 <div id="output"></div>
-
-
+<div id="score"></div>
